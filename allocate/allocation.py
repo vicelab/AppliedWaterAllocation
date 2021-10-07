@@ -11,7 +11,7 @@ WELL_ALLOCATION_MARGIN = MARGIN
 SINGLE_CROP_WELL_ALLOCATION_MARGIN = MARGIN
 
 
-def get_parts(timestep):
+def get_parts(cost_timestep, year=2018):
     # so, we want to satisfy the demand of every ag field
     costs = []
     constraints = []
@@ -36,14 +36,15 @@ def get_parts(timestep):
             vars_by_field[field.liq_id].append(variable)
 
     for field in vars_by_field:  # for each field, make sure the allocations to it are less than the demand
-        field_demand = models.AgField.objects.get(liq_id=field).timesteps.get(timestep=timestep).demand
+        field_demand = models.AgField.objects.get(liq_id=field).timesteps.get(timestep=cost_timestep).demand
         constraints.append(sum(vars_by_field[field]) < field_demand)
         constraints.append(sum(vars_by_field) >= FIELD_DEMAND_MARGIN * field_demand)  # make sure that we get close to the amount of water required. Leaving a bit of slosh to allow for data misalignments
 
     for well in vars_by_well:  # for each well, make sure the allocations it sends out are less than its capacity
         well_obj = models.Well.objects.get(well_id=well)
-        constraints.append(sum(vars_by_well[well] < well_obj.capacity))  # can't overallocate the well
-        constraints.append(sum(vars_by_well[well] > WELL_ALLOCATION_MARGIN * well_obj.capacity))  # but we also know the well produced a certain amount of water - make sure it's applied
+        annual_production = well_obj.annual_production(year)
+        constraints.append(sum(vars_by_well[well] < annual_production))  # can't overallocate the well
+        constraints.append(sum(vars_by_well[well] > WELL_ALLOCATION_MARGIN * annual_production))  # but we also know the well produced a certain amount of water - make sure it's applied
 
         # now make sure that water from the well that we know went to a specific crop gets allocated to that crop
         for production in models.WellProduction.objects.filter(well=well_obj):

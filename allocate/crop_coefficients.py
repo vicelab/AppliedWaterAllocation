@@ -16,6 +16,7 @@
 
 import models
 
+
 def get_parts(service_area_id):
 	"""
 		These are effectively separate models by service area, so we'll run them separately
@@ -23,4 +24,7 @@ def get_parts(service_area_id):
 	:return:
 	"""
 
-	models.
+	wells = models.Well.objects.filter(ucm_service_area_id=service_area_id)
+	fields = models.AgField.objects.filter(ucm_service_area_id=service_area_id)
+
+	pumped_water =

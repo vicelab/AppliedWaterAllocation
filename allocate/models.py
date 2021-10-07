@@ -37,15 +37,37 @@ class Well(models.Model):
     @property
     def capacity(self):
         # todo - make sure this sums up all of the production items below
-        return self.production.all().values('quantity').annotate(capacity=models.Sum('quantity')).first().capacity
+        return self.production.all().aggregate(models.Sum('quantity'))['quantity__sum']
+        #return self.production.all().values('quantity').annotate(capacity=models.Sum('quantity')).first().capacity
 
+    def _annual_production_only(self, year):
+        return self.production.filter(year=year, month=None, semi_year=None).aggregate(models.Sum('quantity'))['quantity__sum']
+
+    def _semi_year_production(self, year, semi_year):
+        # not using this yet - only aggregating up to annual
+        return self.production.filter(year=year, month=None, semi_year=semi_year).aggregate(models.Sum('quantity'))['quantity__sum']
+
+    def _monthly_production(self, year, month):
+        # not using this yet - only aggregating up to annual
+        return self.production.filter(year=year, month=month, semi_year=None).aggregate(models.Sum('quantity'))['quantity__sum']
+
+    def annual_production(self, year):
+        try:
+            return self._annual_production_only(year)
+        except WellProduction.DoesNotExist:
+            try:  # if we don't have annual data, aggregate the semi-annual data
+                return self.production.filter(year=year, month=None).aggregate(models.Sum('quantity'))['quantity__sum']
+            except WellProduction.DoesNotExist:  # and if we don't have that, then aggregate the monthly data for the year
+                return self.production.filter(year=year, semi_year=None).aggregate(models.Sum('quantity'))['quantity__sum']
 
 class WellProduction(models.Model):
     class Meta:
         unique_together = ["well", "timestep"]
 
     well = models.ForeignKey(Well, on_delete=models.CASCADE, related_name="production")
-    timestep = models.SmallIntegerField()
+    year = models.SmallIntegerField()
+    month = models.SmallIntegerField()
+    semi_year = models.SmallIntegerField()
 
     crop = models.ForeignKey(Crop, on_delete=models.CASCADE, null=True, blank=True, related_name="production")
     quantity = models.DecimalField(max_digits=16, decimal_places=4)
@@ -53,6 +75,7 @@ class WellProduction(models.Model):
 
 class AgField(models.Model):
     crop = models.ForeignKey(Crop, on_delete=models.SET_NULL)
+    ucm_service_area_id = models.TextField()
     liq_id = models.TextField()
     openet_id = models.TextField(null=True)
 
@@ -70,6 +93,7 @@ class AgFieldTimestep(models.Model):
     @property
     def demand(self):
         return self.consumptive_use - self.precip
+
 
 class Pipe(models.Model):
     well = models.ForeignKey(Well, on_delete=models.CASCADE, related_name="pipes")
