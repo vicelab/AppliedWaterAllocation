@@ -1,10 +1,11 @@
 from collections import defaultdict
 
-from cvxpy import Problem, Variable, Minimize
+from cvxpy import Problem, Variable, Maximize
 import models
 
 # TODO: mass balance doesn't include precip yet
 
+MAX_BENEFIT_DISTANCE_METERS = 3000  # how far should we allow water to travel where the benefit is greater than the cost? Includes some extra for well positioning error (which is significant)
 MARGIN = 0.95
 FIELD_DEMAND_MARGIN = MARGIN
 WELL_ALLOCATION_MARGIN = MARGIN
@@ -13,6 +14,7 @@ SINGLE_CROP_WELL_ALLOCATION_MARGIN = MARGIN
 
 def get_parts(cost_timestep, year=2018):
     # so, we want to satisfy the demand of every ag field
+    benefits = []
     costs = []
     constraints = []
 
@@ -28,6 +30,7 @@ def get_parts(cost_timestep, year=2018):
             vars_by_name[pipe.variable_name] = variable
             pipe.save()
 
+            benefits.append(variable * MAX_BENEFIT_DISTANCE_METERS)
             cost = variable * pipe.distance  # the cost is the amount of water sent over each pipe times the distance of the pipe
             costs.append(cost)
 
@@ -59,9 +62,9 @@ def get_parts(cost_timestep, year=2018):
             constraints.append(sum(crop_variables) < production.quantity)
             constraints.append(sum(crop_variables) >= SINGLE_CROP_WELL_ALLOCATION_MARGIN * production.quantity)
 
-    return {"costs": costs, "constraints": constraints}
+    return {"benefits": benefits, "costs": costs, "constraints": constraints}
 
 
 def build_problem():
     problem_info = get_parts()
-    problem = Problem(Minimize(sum(problem_info["costs"])), problem_info["constraints"])
+    problem = Problem(Maximize(sum(problem_info["benefits"]) - sum(problem_info["costs"])), problem_info["constraints"])
