@@ -6,9 +6,13 @@ class Crop(models.Model):
         We'll keep a list of crops primarily so that when wells reported providing water to a specific
         crop, we can match it
     """
-    name = models.TextField()
-    liq_code = models.TextField()
-    _efficiency_options = models.TextField()  # this will be a comma separated string of floating point values
+    vw_crop_name = models.TextField(unique=True)
+    ucm_group = models.TextField(null=True)
+    liq_crop_name = models.TextField(null=True)
+    liq_crop_id = models.CharField(max_length=5, null=True)
+    liq_group_code = models.CharField(max_length=5, null=True)
+    liq_group_name = models.TextField(null=True)
+    _efficiency_options = models.TextField(null=True)  # this will be a comma separated string of floating point values
 
     @property
     def efficiency_options(self):
@@ -20,10 +24,11 @@ class Well(models.Model):
     """
 
     """
-    well_id = models.TextField()  # valley water's well identifier
+    well_id = models.TextField(unique=True)  # valley water's well identifier
+    apn = models.TextField()
     ucm_service_area_id = models.TextField()  # our identifier for the service area this well is a part of
 
-    allocated_amount = models.DecimalField(max_digits=16, decimal_places=4)
+    allocated_amount = models.DecimalField(max_digits=16, decimal_places=4, null=True)
 
     @property
     def losses(self):
@@ -60,9 +65,8 @@ class Well(models.Model):
             except WellProduction.DoesNotExist:  # and if we don't have that, then aggregate the monthly data for the year
                 return self.production.filter(year=year, semi_year=None).aggregate(models.Sum('quantity'))['quantity__sum']
 
+
 class WellProduction(models.Model):
-    class Meta:
-        unique_together = ["well", "timestep"]
 
     well = models.ForeignKey(Well, on_delete=models.CASCADE, related_name="production")
     year = models.SmallIntegerField()
@@ -74,9 +78,9 @@ class WellProduction(models.Model):
 
 
 class AgField(models.Model):
-    crop = models.ForeignKey(Crop, on_delete=models.SET_NULL)
+    crop = models.ForeignKey(Crop, on_delete=models.SET_NULL, null=True)
     ucm_service_area_id = models.TextField()
-    liq_id = models.TextField()
+    liq_id = models.TextField(unique=True)
     openet_id = models.TextField(null=True)
 
 
@@ -96,6 +100,9 @@ class AgFieldTimestep(models.Model):
 
 
 class Pipe(models.Model):
+    class Meta:
+        unique_together = ["well", "agfield"]
+
     well = models.ForeignKey(Well, on_delete=models.CASCADE, related_name="pipes")
     agfield = models.ForeignKey(AgField, on_delete=models.CASCADE, related_name="pipes")
     distance = models.DecimalField(max_digits=16, decimal_places=4)

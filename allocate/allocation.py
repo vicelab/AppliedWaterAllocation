@@ -3,7 +3,8 @@ from collections import defaultdict
 from cvxpy import Problem, Variable, Maximize
 import models
 
-# TODO: mass balance doesn't include precip yet
+# TODO: mass balance doesn't include precip yet - make sure to include it and check all units are the same between production, ET, and precip
+## TODO - make it look for the specific crop in the service area as a constraint - if the crop doesn't exist, then just add it to the crop group constraints instead
 
 MAX_BENEFIT_DISTANCE_METERS = 3000  # how far should we allow water to travel where the benefit is greater than the cost? Includes some extra for well positioning error (which is significant)
 MARGIN = 0.95
@@ -12,7 +13,7 @@ WELL_ALLOCATION_MARGIN = MARGIN
 SINGLE_CROP_WELL_ALLOCATION_MARGIN = MARGIN
 
 
-def get_parts(cost_timestep, year=2018):
+def get_parts(cost_timestep=1, year=2018):
     # so, we want to satisfy the demand of every ag field
     benefits = []
     costs = []

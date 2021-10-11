@@ -15,6 +15,18 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+BOX_PATH = r"C:\Users\dsx\Box"
+INPUT_DATA_PATH = Path(BOX_PATH) / "VICE Lab" / "RESEARCH" / "PROJECTS" / "Valley_Water" / "DATA" / "INPUT DATA"
+CROP_DATA = INPUT_DATA_PATH / "vw_crop_crosswalks_vw_perspective.csv"
+FIELD_DATA = INPUT_DATA_PATH / "vw_fields_liq.csv"
+WELL_DATA = INPUT_DATA_PATH / "vw_wells_with_apns_and_service_areas.csv"
+ET_DATA = INPUT_DATA_PATH / "vw_et_and_precip_2018_annual.csv"
+PRODUCTION_DATA_FILES = (
+                            INPUT_DATA_PATH / "vw_well_billing_semi.csv",
+                            INPUT_DATA_PATH / "vw_well_billing_annual.csv",
+                            INPUT_DATA_PATH / "vw_well_billing_month.csv",
+                         )
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/3.2/howto/deployment/checklist/
@@ -37,6 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'allocate'
 ]
 
 MIDDLEWARE = [

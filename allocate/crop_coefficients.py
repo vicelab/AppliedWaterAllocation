@@ -27,4 +27,4 @@ def get_parts(service_area_id):
 	wells = models.Well.objects.filter(ucm_service_area_id=service_area_id)
 	fields = models.AgField.objects.filter(ucm_service_area_id=service_area_id)
 
-	pumped_water =
+	#pumped_water =
