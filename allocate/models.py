@@ -108,4 +108,4 @@ class Pipe(models.Model):
     distance = models.DecimalField(max_digits=16, decimal_places=4)
 
     variable_name = models.TextField(null=True)  # when the model runs, store the variable name for the pipe here
-    allocation = models.DecimalField(max_digits=16, decimal_places=4)
+    allocation = models.DecimalField(max_digits=16, decimal_places=4, null=True)

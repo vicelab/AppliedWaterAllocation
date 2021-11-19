@@ -74,6 +74,14 @@ def load(crop_file=settings.CROP_DATA,
 	load_wells(well_file)
 	load_fields(field_file)
 
+	load_et_data(agtimestep_file)
+
+	generic_csv_import(models.Pipe, pipe_file, {
+		"well": {"Well.well_id": "Well_Nbr"},
+		"agfield": {"AgField.liq_id": "UniqueID"},
+		"distance": "NEAR_DIST",
+	})
+
 	for production_file in production_files:
 		generic_csv_import(models.WellProduction, production_file, {
 			"well": {"Well.well_id": "well_id"},
@@ -86,13 +94,7 @@ def load(crop_file=settings.CROP_DATA,
 		skip_failed_create=True
 		)
 
-	load_et_data(agtimestep_file)
 
-	generic_csv_import(models.Pipe, pipe_file, {
-		"well": {"Well.well_id": "Well_Nbr"},
-		"agfield": {"AgField.liq_id": "liq_id"},
-		"distance": "NEAR_DIST",
-	})
 
 
 def load_crops(crop_file=settings.CROP_DATA):
@@ -125,7 +127,7 @@ def load_wells(well_file=settings.WELL_DATA):
 
 def load_et_data(agtimestep_file=settings.ET_DATA):
 	generic_csv_import(models.AgFieldTimestep, agtimestep_file, {
-		"agfield": {"AgField.liq_id": "liq_id"},
+		"agfield": {"AgField.liq_id": "UniqueID"},
 		"timestep": Constant(1),
 		"consumptive_use": "et",
 		"precip": "precip"

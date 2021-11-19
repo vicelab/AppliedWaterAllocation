@@ -16,8 +16,6 @@ Run `python manage.py migrate` to create the database in the same folder
 Update the path to your local Box folder in 'WellAllocation/settings.py' - line 18 `BOX_PATH`
 Run `python manage.py load_data` to load all of the preprocessed input data into the database
 
-STATUS: load_data works for most inputs, but still fails loading ET data and then needs parcel connections to be tested
-
 ### Running the model
 
 ### Interpreting the results
