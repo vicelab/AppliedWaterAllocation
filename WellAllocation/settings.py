@@ -24,8 +24,9 @@ ET_DATA = INPUT_DATA_PATH / "vw_et_and_precip_2018_annual.csv"
 PRODUCTION_DATA_FILES = (
                             INPUT_DATA_PATH / "vw_well_billing_semi.csv",
                             INPUT_DATA_PATH / "vw_well_billing_annual.csv",
-                            INPUT_DATA_PATH / "vw_well_billing_month.csv",
+                            INPUT_DATA_PATH / "vw_well_billing_monthly.csv",
                          )
+PIPE_FILE = INPUT_DATA_PATH / "vw_well_field_near_table.csv"
 
 
 # Quick-start development settings - unsuitable for production

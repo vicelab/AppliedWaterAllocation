@@ -1,3 +1,5 @@
+import django.db.utils
+
 from WellAllocation import settings
 from allocate import models
 
@@ -24,7 +26,7 @@ def get_value(record, field):
 		model_key = list(field.keys())[0]
 		model, attribute = model_key.split(".")  # it'll be ModelName.attribute as the key and then the value for the lookup
 		kwarg = dict()
-		kwarg[attribute] = sanitize_input(record[field][model_key])
+		kwarg[attribute] = sanitize_input(record[field[model_key]])
 		try:
 			return getattr(models, model).objects.get(**kwarg)
 		except getattr(models, model).DoesNotExist:
@@ -36,7 +38,7 @@ def get_value(record, field):
 		return None
 
 
-def generic_csv_import(model, csv_file, field_map):
+def generic_csv_import(model, csv_file, field_map, skip_failed_create=False):
 	if field_map is None:
 		with open(csv_file, 'r') as csv_data:
 			records = csv.DictReader(csv_data)
@@ -53,15 +55,20 @@ def generic_csv_import(model, csv_file, field_map):
 		for record in records:
 			values = {model_key: get_value(record, field_map[model_key]) for model_key in field_map}
 
-			model.objects.get_or_create(**values)
-
+			try:
+				model.objects.get_or_create(**values)
+			except django.db.utils.IntegrityError:
+				if skip_failed_create:
+					pass
+				else:
+					raise
 
 def load(crop_file=settings.CROP_DATA,
 		 well_file=settings.WELL_DATA,
 		 production_files=settings.PRODUCTION_DATA_FILES,
 		 field_file=settings.FIELD_DATA,
 		 agtimestep_file=settings.ET_DATA,
-		 pipe_file=None):
+		 pipe_file=settings.PIPE_FILE):
 
 	load_crops(crop_file)
 	load_wells(well_file)
@@ -75,15 +82,17 @@ def load(crop_file=settings.CROP_DATA,
 			"year": "calendar_year",
 			"month": "month",
 			"semi_year": "calendar_semi_year",
-		})
+		},
+		skip_failed_create=True
+		)
 
 	load_et_data(agtimestep_file)
 
-	#generic_csv_import(models.Pipe, pipe_file, {
-	#	"well": {"Well.well_id": "Well_Nbr"},
-	#	"agfield": {"AgField.liq_id": "liq_id"},
-	#	"distance": "NEAR_DIST",
-	#})
+	generic_csv_import(models.Pipe, pipe_file, {
+		"well": {"Well.well_id": "Well_Nbr"},
+		"agfield": {"AgField.liq_id": "liq_id"},
+		"distance": "NEAR_DIST",
+	})
 
 
 def load_crops(crop_file=settings.CROP_DATA):
@@ -98,10 +107,11 @@ def load_crops(crop_file=settings.CROP_DATA):
 
 def load_fields(field_file=settings.FIELD_DATA):
 	generic_csv_import(models.AgField, field_file,{
-		"crop": {"Crop.liq_code": "liq_code"},
+		"crop": {"Crop.liq_group_code": "CLASS2"},
 		"ucm_service_area_id": "ucm_well_service_area_id",
 		"liq_id": "UniqueID",
-	})
+	},
+	skip_failed_create=True)
 
 
 

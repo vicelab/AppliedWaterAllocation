@@ -70,8 +70,8 @@ class WellProduction(models.Model):
 
     well = models.ForeignKey(Well, on_delete=models.CASCADE, related_name="production")
     year = models.SmallIntegerField()
-    month = models.SmallIntegerField()
-    semi_year = models.SmallIntegerField()
+    month = models.SmallIntegerField(null=True)
+    semi_year = models.SmallIntegerField(null=True)
 
     crop = models.ForeignKey(Crop, on_delete=models.CASCADE, null=True, blank=True, related_name="production")
     quantity = models.DecimalField(max_digits=16, decimal_places=4)
