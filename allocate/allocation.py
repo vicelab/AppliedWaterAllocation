@@ -120,11 +120,11 @@ def build_problem(service_area=None, use_crop_constraints=True):
     for field in problem_info["vars_by_field"]:
         #ignore1, well, ignore2, field = variable.name().split("_")
         allocations = problem_info["vars_by_field"][field]
-        allocation_arrays = [str(val.value) for val in allocations]
+        allocation_arrays = [str(round(float(val.value), 3)) for val in allocations]
         allocation_values = ", ".join(allocation_arrays)
         demand = problem_info['demands_by_field'][field]
         if demand == 0:
             continue
-        log.info(f"Field {field} - demand: {demand}, allocations: {allocation_values}")
+        log.info(f"Field {field} - demand: {demand:.3f}, allocations: {allocation_values}")
 
-    log.info(f"Total Allocations: {total_allocations}")
+    log.info(f"Total Allocations: {total_allocations:.3f}")
