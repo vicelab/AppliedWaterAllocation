@@ -88,6 +88,7 @@ class AgField(models.Model):
     ucm_service_area_id = models.TextField()
     liq_id = models.TextField(unique=True)
     openet_id = models.TextField(null=True)
+    acres = models.DecimalField(max_digits = 10, decimal_places=4, null=False)
 
 
 class AgFieldTimestep(models.Model):
@@ -102,7 +103,11 @@ class AgFieldTimestep(models.Model):
 
     @property
     def demand(self):
-        return self.consumptive_use - self.precip
+        mm_demand = self.consumptive_use - self.precip
+        mm_demand = max(mm_demand, 0)  # make sure we didn't go negative here
+        feet_demand = float(mm_demand) / 304.8  # get the demand in feet/acre
+        demand = feet_demand * float(self.agfield.acres)  # now multiple by acreage of the field to get the acre feet needed to satisfy remaining demand
+        return demand
 
 
 class Pipe(models.Model):

@@ -121,6 +121,7 @@ def load_fields(field_file=settings.FIELD_DATA):
 		"crop": {"Crop.liq_group_code": "CLASS2"},
 		"ucm_service_area_id": "ucm_well_service_area_id",
 		"liq_id": "UniqueID",
+		"acres": "ACRES"
 	},
 	skip_failed_create=True)
 
