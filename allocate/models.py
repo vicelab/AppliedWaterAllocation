@@ -46,23 +46,29 @@ class Well(models.Model):
         #return self.production.all().values('quantity').annotate(capacity=models.Sum('quantity')).first().capacity
 
     def _annual_production_only(self, year):
-        return self.production.filter(year=year, month=None, semi_year=None).aggregate(models.Sum('quantity'))['quantity__sum']
+        query = self.production.filter(year=year, month=None, semi_year=None)
+        if len(query) > 0:
+            return query.aggregate(models.Sum('quantity'))['quantity__sum']
 
     def _semi_year_production(self, year, semi_year):
         # not using this yet - only aggregating up to annual
-        return self.production.filter(year=year, month=None, semi_year=semi_year).aggregate(models.Sum('quantity'))['quantity__sum']
+        query = self.production.filter(year=year, month=None, semi_year=semi_year)
+        if len(query) > 0:
+            return query.aggregate(models.Sum('quantity'))['quantity__sum']
 
     def _monthly_production(self, year, month):
         # not using this yet - only aggregating up to annual
-        return self.production.filter(year=year, month=month, semi_year=None).aggregate(models.Sum('quantity'))['quantity__sum']
+        query = self.production.filter(year=year, month=month, semi_year=None)
+        if len(query) > 0:
+            return query.aggregate(models.Sum('quantity'))['quantity__sum']
 
     def annual_production(self, year):
-        try:
-            return self._annual_production_only(year)
-        except WellProduction.DoesNotExist:
-            try:  # if we don't have annual data, aggregate the semi-annual data
-                return self.production.filter(year=year, month=None).aggregate(models.Sum('quantity'))['quantity__sum']
-            except WellProduction.DoesNotExist:  # and if we don't have that, then aggregate the monthly data for the year
+        ann_prod = self._annual_production_only(year)
+        if ann_prod is None:  # if we don't have annual data, aggregate the semi-annual data
+            query = self.production.filter(year=year, month=None)
+            if len(query) > 0:
+                return query.aggregate(models.Sum('quantity'))['quantity__sum']
+            else:  # and if we don't have that, then aggregate the monthly data for the year
                 return self.production.filter(year=year, semi_year=None).aggregate(models.Sum('quantity'))['quantity__sum']
 
 

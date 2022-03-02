@@ -1,9 +1,13 @@
+import logging
+
 import django.db.utils
 
 from WellAllocation import settings
 from allocate import models
 
 import csv
+
+log = logging.getLogger(__name__)
 
 class Constant(object):
 	""" we'll use this in field maps - if it's a Constant type, then it won't look up the value"""
@@ -70,19 +74,24 @@ def load(crop_file=settings.CROP_DATA,
 		 agtimestep_file=settings.ET_DATA,
 		 pipe_file=settings.PIPE_FILE):
 
+	log.info("Crops")
 	load_crops(crop_file)
 	load_wells(well_file)
 	load_fields(field_file)
 
+	log.info("ET Data")
 	load_et_data(agtimestep_file)
 
+	log.info("Pipes")
 	generic_csv_import(models.Pipe, pipe_file, {
 		"well": {"Well.well_id": "Well_Nbr"},
 		"agfield": {"AgField.liq_id": "UniqueID"},
 		"distance": "NEAR_DIST",
 	})
 
+	log.info("Production Data")
 	for production_file in production_files:
+		log.info(production_file)
 		generic_csv_import(models.WellProduction, production_file, {
 			"well": {"Well.well_id": "well_id"},
 			"crop": {"Crop.vw_crop_name": "factor"},

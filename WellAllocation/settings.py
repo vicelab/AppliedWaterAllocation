@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/3.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/3.2/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -91,7 +91,7 @@ WSGI_APPLICATION = 'WellAllocation.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': 'C:/Users/dsx/Downloads/WellAllocation_db.sqlite3',
     }
 }
 
@@ -138,3 +138,67 @@ STATIC_URL = '/static/'
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+log_handlers = ['console', 'file_debug']
+django_request_handlers = log_handlers
+LOG_FOLDER = BASE_DIR
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s : %(asctime)s : %(module)s : %(process)d : %(thread)d : %(message)s'
+        },
+        'simple': {
+            'format': '%(levelname)s:%(name)s: %(message)s'
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'level': 'INFO' if not DEBUG else 'DEBUG',
+        },
+        'file_debug': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'debug.log') if DEBUG else os.path.join(LOG_FOLDER, "waterspout_debug.log"),
+            'formatter': 'verbose'
+        },
+        'file_error': {
+            'level': 'WARNING',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'warnings.log') if DEBUG else os.path.join(LOG_FOLDER, "waterspout_error.log"),
+            'formatter': 'verbose'
+        },
+        'file_model_run_processor': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'waterspout_process_runs.log') if DEBUG else os.path.join(LOG_FOLDER,
+                                                                                          "waterspout_process_runs.log"),
+            'formatter': 'verbose'
+        },
+        'email_warn': {
+            'level': "WARNING",
+            'class': "django.utils.log.AdminEmailHandler",
+        },
+        'email_error': {
+            'level': "ERROR",
+            'class': "django.utils.log.AdminEmailHandler"
+        },
+    },
+    'loggers': {
+        'django': {
+            # don't want warnings from django.request via email, which include 400-series errors like 401 and 404.
+            'handlers': django_request_handlers,
+            'level': "ERROR",
+        },
+        'allocate': {
+            'handlers': log_handlers,
+            'level': 'DEBUG'
+        },
+
+    },
+}
