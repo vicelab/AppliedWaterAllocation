@@ -1,12 +1,13 @@
 from collections import defaultdict
 
-from cvxpy import Problem, Variable, Maximize, sum as cvxsum
+from cvxpy import Problem, Variable, Parameter, Maximize, sum as cvxsum
 from . import models
 
 import logging
 
 log = logging.getLogger(__name__)
 
+# TODO: find the irrigation type by trying many values and see which ones work across the whole growing season (all timesteps)
 # TODO: make sure all units are the same between production, ET, and precip
 # TODO: Also doesn't include applied water efficiency in the algorithm?
 ## TODO - make it look for the specific crop in the service area as a constraint - if the crop doesn't exist, then just add it to the crop group constraints instead
@@ -45,7 +46,7 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
                 do_save = True
 
             pipe.variable_name = f"well_{well.well_id}_field_{field.liq_id}"
-            variable = Variable(name=pipe.variable_name)
+            variable = Variable(name=pipe.variable_name, nonneg=True)
             vars_by_name[pipe.variable_name] = variable
 
             if do_save:
@@ -67,9 +68,10 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
             field_demand = 0  # if we don't know the demand for the field, assume it wasn't planted and allocate 0 applied water
 
         log.info(f"Field Demand: {field_demand}")
-        demands_by_field[field] = field_demand
-        constraints.append(cvxsum(vars_by_field[field]) <= float(field_demand))  # make sure it doesn't go very high - should maybe do this with the benefit function and not a constraint
-        constraints.append(cvxsum(vars_by_field[field]) >= FIELD_DEMAND_MARGIN * float(field_demand))  # make sure that we get close to the amount of water required. Leaving a bit of slosh to allow for data misalignments
+        demand = float(field_demand) / Parameter(name=f"{field}_irrigation_efficiency", value=0.75)
+        demands_by_field[field] = demand
+        constraints.append(cvxsum(vars_by_field[field]) <= demand)  # make sure it doesn't go very high - should maybe do this with the benefit function and not a constraint
+        constraints.append(cvxsum(vars_by_field[field]) >= FIELD_DEMAND_MARGIN * demand)  # make sure that we get close to the amount of water required. Leaving a bit of slosh to allow for data misalignments
 
     for well in vars_by_well:  # for each well, make sure the allocations it sends out are less than its capacity
         well_obj = models.Well.objects.get(well_id=well)
@@ -81,9 +83,10 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
         constraints.append(cvxsum(vars_by_well[well]) <= float(annual_production))  # can't overallocate the well
         constraints.append(cvxsum(vars_by_well[well]) >= WELL_ALLOCATION_MARGIN * float(annual_production))  # but we also know the well produced a certain amount of water - make sure it's applied
 
-        for field in vars_by_field:
-            for pipe_allocation in vars_by_field[field]:
-                constraints.append(pipe_allocation >= 0)  # don't allow any pipe to have negative values, or else the model does strange things (and we don't suck water out of fields, anyway)
+        # we specified nonneg = True in variable creation so we don't need this. Nonneg = True provides a bit more info to the analyzer
+        #for field in vars_by_field:
+        #    for pipe_allocation in vars_by_field[field]:
+        #        constraints.append(pipe_allocation >= 0)  # don't allow any pipe to have negative values, or else the model does strange things (and we don't suck water out of fields, anyway)
 
         # now make sure that water from the well that we know went to a specific crop gets allocated to that crop
         if use_crop_constraints:
@@ -109,6 +112,9 @@ def set_crop_constraints(constraints, vars_by_name, well, well_obj):
 def build_problem(service_area=None, use_crop_constraints=True):
     problem_info = get_parts(service_area=service_area, use_crop_constraints=use_crop_constraints)
     problem = Problem(Maximize(cvxsum(problem_info["benefits"]) - cvxsum(problem_info["costs"])), problem_info["constraints"])
+    return problem, problem_info
+
+def solve_and_report(problem, problem_info):
     problem.solve(verbose=True)
 
     total_allocations = 0
@@ -123,8 +129,36 @@ def build_problem(service_area=None, use_crop_constraints=True):
         allocation_arrays = [str(round(float(val.value), 3)) for val in allocations]
         allocation_values = ", ".join(allocation_arrays)
         demand = problem_info['demands_by_field'][field]
-        if demand == 0:
+        print(demand)
+        original_demand = float(str(demand).split(" / ")[0])
+        if original_demand == 0:
             continue
-        log.info(f"Field {field} - demand: {demand:.3f}, allocations: {allocation_values}")
+        log.info(f"Field {field} - evaporative demand: {original_demand:.3f}, allocations: {allocation_values}")
 
     log.info(f"Total Allocations: {total_allocations:.3f}")
+
+
+class MonteCarloController(object):
+    service_area = None
+    fields = list()
+    field_efficiencies = dict()
+    problem = None
+    problem_info = None
+    use_crop_constraints = True
+
+    def __init__(self, service_area_id, use_crop_constraints):
+        self.service_area = service_area_id
+        self.use_crop_constraints = use_crop_constraints
+        self.build()
+
+    def build(self):
+        self.problem, self.problem_info = build_problem(self.service_area, use_crop_constraints=self.use_crop_constraints)
+
+    def run(self, iterations=1000):
+        pass
+
+    def run_iteration(self):
+        pass
+
+    def update_results(self):
+        pass

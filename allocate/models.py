@@ -83,12 +83,33 @@ class WellProduction(models.Model):
     quantity = models.DecimalField(max_digits=16, decimal_places=4)
 
 
+class IrrigationType(models.Model):
+    name = models.CharField(null=False)
+    efficiency = models.DecimalField(max_digits=5, decimal_places=5)
+
+
+class CropIrrigationTypePrior(models.Model):
+    class Meta:
+        unique_together = ['crop', 'irrigation_type']
+
+    crop = models.ForeignKey(Crop, on_delete=models.CASCADE, related_name='irrigation_priors')
+    irrigation_type = models.ForeignKey(IrrigationType, on_delete=models.CASCADE, related_name='crop_priors')
+    probability = models.DecimalField(max_digits=5, decimal_places=5)
+
+
 class AgField(models.Model):
     crop = models.ForeignKey(Crop, on_delete=models.SET_NULL, null=True)
     ucm_service_area_id = models.TextField()
     liq_id = models.TextField(unique=True)
     openet_id = models.TextField(null=True)
-    acres = models.DecimalField(max_digits = 10, decimal_places=4, null=False)
+    acres = models.DecimalField(max_digits=10, decimal_places=4, null=False)
+
+
+class AgFieldResult(models.Model):
+    agfield = models.ForeignKey(AgField, on_delete=models.CASCADE, related_name="results")
+    irrigation_type = models.ForeignKey(IrrigationType, on_delete=models.CASCADE, related_name="results_by_field")
+
+    estimated_probability = models.DecimalField(max_digits=5, decimal_places=5)
 
 
 class AgFieldTimestep(models.Model):
