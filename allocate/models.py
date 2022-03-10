@@ -84,7 +84,7 @@ class WellProduction(models.Model):
 
 
 class IrrigationType(models.Model):
-    name = models.CharField(null=False)
+    name = models.CharField(null=False, max_length=60)
     efficiency = models.DecimalField(max_digits=5, decimal_places=5)
 
 
@@ -98,7 +98,7 @@ class CropIrrigationTypePrior(models.Model):
 
 
 class AgField(models.Model):
-    crop = models.ForeignKey(Crop, on_delete=models.SET_NULL, null=True)
+    crop = models.ManyToManyField(Crop, null=True)
     ucm_service_area_id = models.TextField()
     liq_id = models.TextField(unique=True)
     openet_id = models.TextField(null=True)

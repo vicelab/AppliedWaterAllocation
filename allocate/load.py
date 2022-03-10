@@ -35,6 +35,8 @@ def get_value(record, field):
 			return getattr(models, model).objects.get(**kwarg)
 		except getattr(models, model).DoesNotExist:
 			return None
+		except getattr(models, model).MultipleObjectsReturned:
+			return getattr(models, model).objects.filter(**kwarg)
 
 	try:
 		return sanitize_input(record[field])  # if it's not a foreign key, then this is simple
@@ -42,7 +44,7 @@ def get_value(record, field):
 		return None
 
 
-def generic_csv_import(model, csv_file, field_map, skip_failed_create=False):
+def generic_csv_import(model, csv_file, field_map, skip_failed_create=False, bulk=True):
 	if field_map is None:
 		with open(csv_file, 'r') as csv_data:
 			records = csv.DictReader(csv_data)
@@ -54,18 +56,25 @@ def generic_csv_import(model, csv_file, field_map, skip_failed_create=False):
 			if field_map[field] is None:  # set the key as the value to look up in the csv - it means to use it for both
 				field_map[field] = field
 
+	items = []
 	with open(csv_file, 'r') as csv_data:
 		records = csv.DictReader(csv_data)
 		for record in records:
 			values = {model_key: get_value(record, field_map[model_key]) for model_key in field_map}
 
-			try:
-				model.objects.get_or_create(**values)
-			except django.db.utils.IntegrityError:
-				if skip_failed_create:
-					pass
-				else:
-					raise
+			if bulk:
+				items.append(model(**values))
+			else:
+				try:
+					model.objects.get_or_create(**values)
+				except django.db.utils.IntegrityError:
+					if skip_failed_create:
+						pass
+					else:
+						raise
+
+	if bulk:
+		model.objects.bulk_create(items, ignore_conflicts=True)
 
 def load(crop_file=settings.CROP_DATA,
 		 well_file=settings.WELL_DATA,
@@ -118,7 +127,7 @@ def load_crops(crop_file=settings.CROP_DATA):
 
 def load_fields(field_file=settings.FIELD_DATA):
 	generic_csv_import(models.AgField, field_file,{
-		"crop": {"Crop.liq_group_code": "CLASS2"},
+		"crop": {"Crop.liq_crop_id": "CROPTYP2"},
 		"ucm_service_area_id": "ucm_well_service_area_id",
 		"liq_id": "UniqueID",
 		"acres": "ACRES"

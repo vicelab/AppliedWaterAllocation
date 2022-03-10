@@ -15,6 +15,8 @@ log = logging.getLogger(__name__)
 # TODO: make sure all units are the same between production, ET, and precip
 # TODO: Also doesn't include applied water efficiency in the algorithm?
 ## TODO - make it look for the specific crop in the service area as a constraint - if the crop doesn't exist, then just add it to the crop group constraints instead
+# TODO: Check out sampling method in Monte Carlo
+
 
 MAX_BENEFIT_DISTANCE_METERS = 3000  # how far should we allow water to travel where the benefit is greater than the cost? Includes some extra for well positioning error (which is significant)
 MARGIN = 0.1  # TODO: I should be higher - closer to 0.95!!
@@ -220,7 +222,8 @@ class MonteCarloController(object):
                     'prior_id': prior.id,
                     'name': prior.irrigation_type.name,
                     'efficiency': prior.irrigation_type.efficiency,
-                    'probability': prior.probability
+                    'probability': prior.probability,
+                    "effectiveness": []  # how good did the full model fit after running it - this will be appended to after each model run, and we'll use it for one big bayesian update
                 } for prior in priors],
             }
 
@@ -242,10 +245,24 @@ class MonteCarloController(object):
         for field in self.problem_info["irrigation_efficiency_params"]:
             field_param = self.problem_info["irrigation_efficiency_params"][field]
             field_options = efficiency_information[field]
+
+            # I don't actually think we should get the value based on the prior probability since it might bias the sample
+            # - we likely would want a true random sample of the efficiency options and to then go from there. But does
+            # that then make our prior probability almost moot?
             field_param.value = numpy.random.choice(field_options["efficiencies"], replace=True, p=field_options["probabilities"])
 
+        self.problem.solve()
+        self.update_results(efficiency_information)
 
+    def update_results(self, efficiency_information):
 
+        for field in self.problem_info["irrigation_efficiency_params"]:
+            field_param = self.problem_info["irrigation_efficiency_params"][field]
+            field_info = efficiency_information[field]
 
-    def update_results(self):
-        pass
+            # what we'll actually want to do here is to see *how* effective it was, not just a binary yes/no based
+            # on whether it was feasible or not
+            if problem.status in ["infeasible", "unbounded"]:
+                field_info["effectiveness"].append(0)
+            else:
+                field_info["effectiveness"].append(1)
