@@ -85,6 +85,7 @@ class WellProduction(models.Model):
 
 class IrrigationType(models.Model):
     name = models.CharField(null=False, max_length=60)
+    code = models.CharField(null=False, max_length=4)
     efficiency = models.DecimalField(max_digits=5, decimal_places=5)
 
 
@@ -94,11 +95,11 @@ class CropIrrigationTypePrior(models.Model):
 
     crop = models.ForeignKey(Crop, on_delete=models.CASCADE, related_name='irrigation_priors')
     irrigation_type = models.ForeignKey(IrrigationType, on_delete=models.CASCADE, related_name='crop_priors')
-    probability = models.DecimalField(max_digits=5, decimal_places=5)
+    probability = models.DecimalField(max_digits=5, decimal_places=4)
 
 
 class AgField(models.Model):
-    crop = models.ManyToManyField(Crop, null=True)
+    crop = models.ForeignKey(Crop, on_delete=models.SET_NULL, null=True)
     ucm_service_area_id = models.TextField()
     liq_id = models.TextField(unique=True)
     openet_id = models.TextField(null=True)

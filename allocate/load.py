@@ -35,8 +35,8 @@ def get_value(record, field):
 			return getattr(models, model).objects.get(**kwarg)
 		except getattr(models, model).DoesNotExist:
 			return None
-		except getattr(models, model).MultipleObjectsReturned:
-			return getattr(models, model).objects.filter(**kwarg)
+		except getattr(models, model).MultipleObjectsReturned:  # get the first option when multiple are returned. This is a simple way to just choose one crop for landiq crops that are groups
+			return getattr(models, model).objects.filter(**kwarg).order_by("id").first()
 
 	try:
 		return sanitize_input(record[field])  # if it's not a foreign key, then this is simple
@@ -81,12 +81,16 @@ def load(crop_file=settings.CROP_DATA,
 		 production_files=settings.PRODUCTION_DATA_FILES,
 		 field_file=settings.FIELD_DATA,
 		 agtimestep_file=settings.ET_DATA,
-		 pipe_file=settings.PIPE_FILE):
+		 pipe_file=settings.PIPE_FILE,
+		 crop_irrigation_file=settings.CROP_IRRIGATION_TYPE_DATA):
 
 	log.info("Crops")
 	load_crops(crop_file)
 	load_wells(well_file)
 	load_fields(field_file)
+
+	log.info("Crop Irrigation Types")
+	load_crop_irrigation_types(crop_irrigation_file)
 
 	log.info("ET Data")
 	load_et_data(agtimestep_file)
@@ -135,6 +139,24 @@ def load_fields(field_file=settings.FIELD_DATA):
 	skip_failed_create=True)
 
 
+def load_irrigation_types():
+	#models.IrrigationType.objects.create(name="Flood Basin", code="FB", efficiency=0.83)
+	#models.IrrigationType.objects.create(name="Flood Furrow", code="FF", efficiency=0.73)
+	models.IrrigationType.objects.create(name="Sprinkler - Solid Set", code="SI", efficiency=0.7)
+	models.IrrigationType.objects.create(name="Drip - Surface", code="SD", efficiency=0.86)
+	#models.IrrigationType.objects.create(name="Drip - Subsurface", code="SSD", efficiency=0.86)
+	#models.IrrigationType.objects.create(name="Other", code="OT", efficiency=None)
+	#models.IrrigationType.objects.create(name="Center Pivot", code="CP", efficiency=0.8)
+	models.IrrigationType.objects.create(name="Sprinkler - Microsprinkler", code="MS", efficiency=0.81)
+	models.IrrigationType.objects.create(name="Fallow", code="F", efficiency=0.01)  # discourage applying water to fallow fields
+
+
+def load_crop_irrigation_types(crop_irrigation_type_file=settings.CROP_IRRIGATION_TYPE_DATA):
+	generic_csv_import(models.CropIrrigationTypePrior, crop_irrigation_type_file, {
+		"crop": {"Crop.liq_crop_id": "crop_code"},
+		"irrigation_type": {"IrrigationType.code": "irrigation_type"},
+		"probability": "probability",
+	})
 
 def load_wells(well_file=settings.WELL_DATA):
 	generic_csv_import(models.Well, well_file, {

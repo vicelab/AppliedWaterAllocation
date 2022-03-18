@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 # TODO: Also doesn't include applied water efficiency in the algorithm?
 ## TODO - make it look for the specific crop in the service area as a constraint - if the crop doesn't exist, then just add it to the crop group constraints instead
 # TODO: Check out sampling method in Monte Carlo
-
+# TODO: Add fallow field constraint where no water should be attached to it - can't have that constraint in conjunction with existing constraints, so need to conditionally apply both
 
 MAX_BENEFIT_DISTANCE_METERS = 3000  # how far should we allow water to travel where the benefit is greater than the cost? Includes some extra for well positioning error (which is significant)
 MARGIN = 0.1  # TODO: I should be higher - closer to 0.95!!
@@ -186,10 +186,24 @@ class MonteCarloController(object):
     use_crop_constraints = True
     monte_carlo_iterations = 1000
     brute_force_combinations_threshold = 100
+    # fallow_crop_id = None
+    null_crop_priors = list()
 
     def __init__(self, service_area_id, use_crop_constraints):
         self.service_area = service_area_id
         self.use_crop_constraints = use_crop_constraints
+        #self.fallow_crop_id = models.Crop.objects.get()
+
+        irrigation_types = models.IrrigationType.objects.all()  # if we don't recognize it, use all of the irrigation type options
+        number_of_types = len(irrigation_types)
+        for irrig in irrigation_types:
+            prior = models.CropIrrigationTypePrior(
+                crop=None,
+                irrigation_type=irrig,
+                probability=1/number_of_types
+            )
+            self.null_crop_priors.append(prior)
+
         self.build()
 
     def build(self):
@@ -211,15 +225,25 @@ class MonteCarloController(object):
         # we don't technically need to collapse this into a custom object here, but I think it might help to
         # avoid random hits to the DB later on.
         for field in fields:
-            priors = field.crop.irrigation_priors
-            irrigation_nums.append(len(priors))
+            if field.crop is not None:  # if we recognize the field's crop, use the known irrigation options
+                priors = field.crop.irrigation_priors.all()
+                crop_name = field.crop.vw_crop_name
+                crop_id = field.crop_id
+                irrigation_nums.append(len(priors))
+            else:
+                priors = self.null_crop_priors
+                crop_name = "Unknown"
+                crop_id = -1
+                irrigation_nums.append(len(self.null_crop_priors))
+
+
             field_irrigation_options[field.liq_id] = {
                 'liq_id': field.liq_id,
-                'crop_name': field.crop.vw_crop_name,
-                'crop_id': field.crop_id,
+                'crop_name': crop_name,
+                'crop_id': crop_id,
                 'irrigation': [{
                     'irrigation_id': prior.irrigation_type.id,
-                    'prior_id': prior.id,
+                    #'prior_id': prior.id,
                     'name': prior.irrigation_type.name,
                     'efficiency': prior.irrigation_type.efficiency,
                     'probability': prior.probability,
@@ -262,7 +286,7 @@ class MonteCarloController(object):
 
             # what we'll actually want to do here is to see *how* effective it was, not just a binary yes/no based
             # on whether it was feasible or not
-            if problem.status in ["infeasible", "unbounded"]:
+            if self.problem.status in ["infeasible", "unbounded"]:
                 field_info["effectiveness"].append(0)
             else:
                 field_info["effectiveness"].append(1)

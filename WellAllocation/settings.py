@@ -21,6 +21,7 @@ CROP_DATA = INPUT_DATA_PATH / "vw_crop_crosswalks_vw_perspective.csv"
 FIELD_DATA = INPUT_DATA_PATH / "vw_fields_liq.csv"
 WELL_DATA = INPUT_DATA_PATH / "vw_wells_with_apns_and_service_areas.csv"
 ET_DATA = INPUT_DATA_PATH / "vw_et_and_precip_2018_annual.csv"
+CROP_IRRIGATION_TYPE_DATA = INPUT_DATA_PATH / "vw_prob_table_crop_irrig.csv"
 PRODUCTION_DATA_FILES = (
                             INPUT_DATA_PATH / "vw_well_billing_semi.csv",
                             INPUT_DATA_PATH / "vw_well_billing_annual.csv",
