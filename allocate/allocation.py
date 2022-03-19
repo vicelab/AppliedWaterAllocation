@@ -1,6 +1,9 @@
 from collections import defaultdict
 from itertools import combinations
 import math
+from matplotlib.pyplot import boxplot
+from matplotlib import pyplot as plt
+import statistics
 
 import numpy
 
@@ -184,7 +187,7 @@ class MonteCarloController(object):
     problem = None
     problem_info = None
     use_crop_constraints = True
-    monte_carlo_iterations = 1000
+    monte_carlo_iterations = 10000
     brute_force_combinations_threshold = 100
     # fallow_crop_id = None
     null_crop_priors = list()
@@ -213,9 +216,22 @@ class MonteCarloController(object):
         if iterations is None:
             iterations = self.monte_carlo_iterations
 
-        efficiency_information = self.get_combinations()
+        self.efficiency_information = self.get_combinations()
         for iteration in range(iterations):
-            self.run_iteration(efficiency_information=efficiency_information)
+            if iteration % 250 == 0:
+                print(iteration)
+            self.run_iteration(efficiency_information=self.efficiency_information)
+
+    def view_results(self, field_id):
+        irrigation_options = self.efficiency_information[field_id]["irrigation"]
+        effectivenesses = [item["effectiveness"] for item in irrigation_options]
+
+        for irrig_type in irrigation_options:
+            mean = statistics.mean(irrig_type["effectiveness"])
+            print(f"{irrig_type['name']}: {mean}")
+
+        boxplot(effectivenesses)
+        plt.show()
 
     def get_combinations(self):
         fields = models.AgField.objects.filter(ucm_service_area_id=self.service_area)
@@ -253,8 +269,8 @@ class MonteCarloController(object):
 
             # we'll want to use numpy.random.choice, and for that we need lists of the efficiencies to choose and their individual probabilities - cache these so
             # that we don't run the list comprehension every time. Though we'll need to update the list of probabilities when we do Bayesian updates
-            field_irrigation_options[field.liq_id]["efficiencies"] = [item.efficiency for item in field_irrigation_options[field.liq_id]["irrigation"]]
-            field_irrigation_options[field.liq_id]["probabilities"] = [item.probability for item in field_irrigation_options[field.liq_id]["irrigation"]]
+            field_irrigation_options[field.liq_id]["efficiencies"] = [float(item["efficiency"]) for item in field_irrigation_options[field.liq_id]["irrigation"]]
+            field_irrigation_options[field.liq_id]["probabilities"] = [float(item["probability"]) for item in field_irrigation_options[field.liq_id]["irrigation"]]
 
         return field_irrigation_options
         #num_combinations = math.prod(irrigation_nums)
@@ -273,7 +289,7 @@ class MonteCarloController(object):
             # I don't actually think we should get the value based on the prior probability since it might bias the sample
             # - we likely would want a true random sample of the efficiency options and to then go from there. But does
             # that then make our prior probability almost moot?
-            field_param.value = numpy.random.choice(field_options["efficiencies"], replace=True, p=field_options["probabilities"])
+            field_param.value = numpy.random.choice(field_options["efficiencies"], replace=True)
 
         self.problem.solve()
         self.update_results(efficiency_information)
@@ -283,10 +299,11 @@ class MonteCarloController(object):
         for field in self.problem_info["irrigation_efficiency_params"]:
             field_param = self.problem_info["irrigation_efficiency_params"][field]
             field_info = efficiency_information[field]
+            irrigation_type = next((item for item in field_info["irrigation"] if math.isclose(item["efficiency"], field_param.value)), None)
 
             # what we'll actually want to do here is to see *how* effective it was, not just a binary yes/no based
             # on whether it was feasible or not
             if self.problem.status in ["infeasible", "unbounded"]:
-                field_info["effectiveness"].append(0)
+                irrigation_type["effectiveness"].append(0)
             else:
-                field_info["effectiveness"].append(1)
+                irrigation_type["effectiveness"].append(self.problem.value)

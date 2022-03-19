@@ -85,7 +85,7 @@ class WellProduction(models.Model):
 
 class IrrigationType(models.Model):
     name = models.CharField(null=False, max_length=60)
-    code = models.CharField(null=False, max_length=4)
+    type_code = models.CharField(null=False, max_length=4)
     efficiency = models.DecimalField(max_digits=5, decimal_places=5)
 
 

@@ -90,6 +90,7 @@ def load(crop_file=settings.CROP_DATA,
 	load_fields(field_file)
 
 	log.info("Crop Irrigation Types")
+	load_irrigation_types()
 	load_crop_irrigation_types(crop_irrigation_file)
 
 	log.info("ET Data")
@@ -142,19 +143,19 @@ def load_fields(field_file=settings.FIELD_DATA):
 def load_irrigation_types():
 	#models.IrrigationType.objects.create(name="Flood Basin", code="FB", efficiency=0.83)
 	#models.IrrigationType.objects.create(name="Flood Furrow", code="FF", efficiency=0.73)
-	models.IrrigationType.objects.create(name="Sprinkler - Solid Set", code="SI", efficiency=0.7)
-	models.IrrigationType.objects.create(name="Drip - Surface", code="SD", efficiency=0.86)
+	models.IrrigationType.objects.create(name="Sprinkler - Solid Set", type_code="SI", efficiency=0.7)
+	models.IrrigationType.objects.create(name="Drip - Surface", type_code="SD", efficiency=0.86)
 	#models.IrrigationType.objects.create(name="Drip - Subsurface", code="SSD", efficiency=0.86)
 	#models.IrrigationType.objects.create(name="Other", code="OT", efficiency=None)
 	#models.IrrigationType.objects.create(name="Center Pivot", code="CP", efficiency=0.8)
-	models.IrrigationType.objects.create(name="Sprinkler - Microsprinkler", code="MS", efficiency=0.81)
-	models.IrrigationType.objects.create(name="Fallow", code="F", efficiency=0.01)  # discourage applying water to fallow fields
+	models.IrrigationType.objects.create(name="Sprinkler - Microsprinkler", type_code="MS", efficiency=0.81)
+	models.IrrigationType.objects.create(name="Fallow", type_code="F", efficiency=0.01)  # discourage applying water to fallow fields
 
 
 def load_crop_irrigation_types(crop_irrigation_type_file=settings.CROP_IRRIGATION_TYPE_DATA):
 	generic_csv_import(models.CropIrrigationTypePrior, crop_irrigation_type_file, {
 		"crop": {"Crop.liq_crop_id": "crop_code"},
-		"irrigation_type": {"IrrigationType.code": "irrigation_type"},
+		"irrigation_type": {"IrrigationType.type_code": "irrigation_type"},
 		"probability": "probability",
 	})
 
