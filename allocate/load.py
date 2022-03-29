@@ -174,3 +174,12 @@ def load_et_data(agtimestep_file=settings.ET_DATA):
 		"consumptive_use": "et",
 		"precip": "precip"
 	})
+
+
+def override_service_areas():
+	"""
+	For running an area-wide model, we need to have everything be in a single service area
+	:return:
+	"""
+	models.AgField.objects.update(ucm_service_area_id="sa_global")
+	models.Well.objects.update(ucm_service_area_id="sa_global")

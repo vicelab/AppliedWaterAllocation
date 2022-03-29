@@ -22,8 +22,8 @@ log = logging.getLogger(__name__)
 # TODO: Add fallow field constraint where no water should be attached to it - can't have that constraint in conjunction with existing constraints, so need to conditionally apply both
 
 MAX_BENEFIT_DISTANCE_METERS = 3000  # how far should we allow water to travel where the benefit is greater than the cost? Includes some extra for well positioning error (which is significant)
-MARGIN = 0.1  # TODO: I should be higher - closer to 0.95!!
-FIELD_DEMAND_MARGIN = MARGIN
+MARGIN = 0.25  # TODO: I should be higher - closer to 0.95!!
+FIELD_DEMAND_MARGIN = 0.75
 WELL_ALLOCATION_MARGIN = MARGIN
 SINGLE_CROP_WELL_ALLOCATION_MARGIN = MARGIN
 
@@ -56,6 +56,10 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
 
             pipe.variable_name = f"well_{well.well_id}_field_{field.liq_id}"
             variable = Variable(name=pipe.variable_name, nonneg=True)
+            # see if we can store the connections to the Django objects on the optimization variables
+            variable.alloc_pipe = pipe
+            variable.alloc_field = field
+            variable.alloc_well = well
             vars_by_name[pipe.variable_name] = variable
 
             if do_save:
@@ -111,6 +115,45 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
             "demands_by_field": demands_by_field,
             "irrigation_efficiency_params": irrigation_efficiency_params
             }
+
+
+def get_sa_total(service_area_id, year=2018, cost_timestep=1):
+    sa_demands = 0
+    sa_supplies = 0
+
+    for field in models.AgField.objects.filter(ucm_service_area_id=service_area_id):
+        try:
+            sa_demands += field.timesteps.get(timestep=cost_timestep).demand
+        except models.AgFieldTimestep.DoesNotExist:
+            continue
+
+    for well in models.Well.objects.filter(ucm_service_area_id=service_area_id):
+        well_prod = well.annual_production(year=year)
+        if well_prod is not None:
+            sa_supplies += well_prod
+
+    return {"demands": sa_demands, "supplies": float(sa_supplies)}
+
+
+def report_sa_totals():
+    all_supplies = 0
+    all_demands = 0
+    for service_area in sorted(list(models.AgField.objects.values_list("ucm_service_area_id").distinct())):
+        totals = get_sa_total(service_area[0])
+        if totals["demands"] == 0:
+            totals["demands"] = 0.0001
+        ratio = totals["supplies"] / totals["demands"]
+        if ratio > 1.35:  # ranges skewed from irrigation efficiency
+            status = "Oversupply - Can't allocate"
+        elif ratio < 1:
+            status = "Undersupply - can't meet demand"
+        else:
+            status = "OK"
+        all_supplies += totals["supplies"]
+        all_demands += totals["demands"]
+        print(f"{service_area[0]} - Supplies: {totals['supplies']}, Demands: {totals['demands']}, Ratio: {ratio}, Status: {status}")
+
+    print(f"Total Supply: {all_supplies}, Total Demand: {all_demands}")
 
 
 def set_crop_constraints(constraints, vars_by_name, well, well_obj):
@@ -187,10 +230,13 @@ class MonteCarloController(object):
     problem = None
     problem_info = None
     use_crop_constraints = True
-    monte_carlo_iterations = 10000
+    monte_carlo_iterations = 1000
     brute_force_combinations_threshold = 100
     # fallow_crop_id = None
     null_crop_priors = list()
+    results = list()
+    best_result_objective_value = 0
+    best_result = None
 
     def __init__(self, service_area_id, use_crop_constraints):
         self.service_area = service_area_id
@@ -222,6 +268,8 @@ class MonteCarloController(object):
                 print(iteration)
             self.run_iteration(efficiency_information=self.efficiency_information)
 
+        print("Complete")
+
     def view_results(self, field_id):
         irrigation_options = self.efficiency_information[field_id]["irrigation"]
         effectivenesses = [item["effectiveness"] for item in irrigation_options]
@@ -241,17 +289,23 @@ class MonteCarloController(object):
         # we don't technically need to collapse this into a custom object here, but I think it might help to
         # avoid random hits to the DB later on.
         for field in fields:
+            use_defaults = False  # use a flag, because we need to use the null crop priors if the crop is unknown or if we don't have priors for the crop
             if field.crop is not None:  # if we recognize the field's crop, use the known irrigation options
                 priors = field.crop.irrigation_priors.all()
-                crop_name = field.crop.vw_crop_name
-                crop_id = field.crop_id
-                irrigation_nums.append(len(priors))
+                if len(priors) > 0:
+                    crop_name = field.crop.vw_crop_name
+                    crop_id = field.crop_id
+                    irrigation_nums.append(len(priors))
+                else:
+                    use_defaults = True
             else:
+                use_defaults = True
+
+            if use_defaults:
                 priors = self.null_crop_priors
                 crop_name = "Unknown"
                 crop_id = -1
                 irrigation_nums.append(len(self.null_crop_priors))
-
 
             field_irrigation_options[field.liq_id] = {
                 'liq_id': field.liq_id,
@@ -292,7 +346,14 @@ class MonteCarloController(object):
             field_param.value = numpy.random.choice(field_options["efficiencies"], replace=True)
 
         self.problem.solve()
-        self.update_results(efficiency_information)
+        #self.update_results(efficiency_information)
+
+        results = ServiceAreaResult(self.problem, self.problem_info, efficiency_information)
+        if results.objective_value is not False:
+            if results.objective_value > self.best_result_objective_value:
+                self.best_result_objective_value = results.objective_value
+                self.best_result = results
+            self.results.append(results)
 
     def update_results(self, efficiency_information):
 
@@ -307,3 +368,84 @@ class MonteCarloController(object):
                 irrigation_type["effectiveness"].append(0)
             else:
                 irrigation_type["effectiveness"].append(self.problem.value)
+
+
+class ServiceAreaResult(object):
+    # stores the individual field level results for all fields in the SA for a single run
+    results = dict()  # just a dict of results by each field
+    objective_value = None  # objective value for the whole SA
+
+    def __init__(self, problem, problem_info, efficiency_information):
+        if problem.status in ["infeasible", "unbounded"]:
+            self.objective_value = False
+            return
+        else:
+            self.objective_value = problem.value
+
+        for field in problem_info["irrigation_efficiency_params"]:
+            field_param = problem_info["irrigation_efficiency_params"][field]
+            field_info = efficiency_information[field]
+            irrigation_type = next((item for item in field_info["irrigation"] if math.isclose(item["efficiency"], field_param.value)), None)
+
+            # what we'll actually want to do here is to see *how* effective it was, not just a binary yes/no based
+            # on whether it was feasible or not
+            if problem.status in ["infeasible", "unbounded"]:
+                irrigation_type["effectiveness"].append(0)
+            else:
+                irrigation_type["effectiveness"].append(problem.value)
+
+        self.field_level_results(problem_info, efficiency_information)
+
+    def field_level_results(self, problem_info, efficiency_information):
+        for field in problem_info["vars_by_field"]:
+            # ignore1, well, ignore2, field = variable.name().split("_")
+            allocations = problem_info["vars_by_field"][field]
+            allocation_arrays = [str(round(float(val.value), 3)) for val in allocations if val.value is not None]
+            allocation_values = ", ".join(allocation_arrays)
+            demand = problem_info['demands_by_field'][field]
+            print(demand)
+            original_demand = float(str(demand).split(" / ")[0])
+            if original_demand == 0:
+                continue
+            log.info(f"Field {field} - evaporative demand: {original_demand:.3f}, allocations: {allocation_values}")
+
+            self.results[field] = FieldResult(field, self, allocations, demand, problem_info["irrigation_efficiency_params"][field].value)
+
+
+class FieldResult(object):
+    field = None
+    # field - reference to Django object? or just the ID?
+    irrigation_efficiency_value = None
+    irrigation_type = None
+    allocations = list()
+    net_water_demand = None  # net water demand - water demand remaining after allocation
+    service_area_result = None
+
+    def __init__(self, field, service_area_result, allocations, demand, irrigation_efficiency):
+        self.field = field
+        self.service_area_result = service_area_result
+        self.allocations = [float(item.value) for item in allocations if item.value is not None]
+        self.net_water_demand = demand - sum(self.allocations)
+        self.irrigation_efficiency_value = irrigation_efficiency
+
+
+"""
+I don't think we need this - it seems like I was planning it for storing multiple results for the same set of input
+efficiencies, but we don't need to do that, so we'll just use a list and append results.
+
+class ResultRegistry(object):
+    store = dict()
+
+    def add_result(self, problem, problem_info, efficiency_information):
+        # keys are a stringified combination of the sorted field ids with their corresponding efficiency values
+        hash_key = f"-".join([f"{item['liq_id']}_{item['irrigation']['efficiency']}" for item in efficiency_information])
+        result = ServiceAreaResult(problem, problem_info, efficiency_information)
+        self.store[hash_key] = result
+
+    # have an items dictionary
+    # confirm the set is the same
+    # store the values there
+
+    # an alternative would be to just keep the best result, but I think we'll
+    # want to know the spread
+"""

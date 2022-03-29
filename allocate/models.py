@@ -24,9 +24,18 @@ class Well(models.Model):
     """
 
     """
+
+    METERED = 1
+    UNMETERED = 2
+    METER_TYPES = [
+        (METERED, 'Metered'),
+        (UNMETERED, 'Unmetered Worksheet'),
+    ]
+
     well_id = models.TextField(unique=True)  # valley water's well identifier
     apn = models.TextField()
     ucm_service_area_id = models.TextField()  # our identifier for the service area this well is a part of
+    production_type = models.PositiveSmallIntegerField(choices=METER_TYPES, default=METERED)
 
     allocated_amount = models.DecimalField(max_digits=16, decimal_places=4, null=True)
 
