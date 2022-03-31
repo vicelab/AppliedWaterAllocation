@@ -4,6 +4,8 @@ import math
 from matplotlib.pyplot import boxplot
 from matplotlib import pyplot as plt
 import statistics
+import random
+import csv
 
 import numpy
 
@@ -22,15 +24,24 @@ log = logging.getLogger(__name__)
 # TODO: Add fallow field constraint where no water should be attached to it - can't have that constraint in conjunction with existing constraints, so need to conditionally apply both
 
 MAX_BENEFIT_DISTANCE_METERS = 3000  # how far should we allow water to travel where the benefit is greater than the cost? Includes some extra for well positioning error (which is significant)
-MARGIN = 0.25  # TODO: I should be higher - closer to 0.95!!
+MARGIN = 0.5  # TODO: I should be higher - closer to 0.95!!
 FIELD_DEMAND_MARGIN = 0.75
-WELL_ALLOCATION_MARGIN = MARGIN
-SINGLE_CROP_WELL_ALLOCATION_MARGIN = MARGIN
+WELL_ALLOCATION_MARGIN = 0
+SINGLE_CROP_WELL_ALLOCATION_MARGIN = 0
 
 FULL_RESET = False  # change if we want to overwrite calculated values for names/variables in the DB. Runs much slower
 
+MAX_WELLS_PER_FIELD = 5
 
-def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraints=True):
+def get_parts(cost_timestep=1,
+              year=2018,
+              service_area=None,
+              use_crop_constraints=True,
+              add_debug=False,
+              well_allocation_margin=WELL_ALLOCATION_MARGIN,
+              single_crop_well_allocation_margin=SINGLE_CROP_WELL_ALLOCATION_MARGIN,
+              field_demand_margin=FIELD_DEMAND_MARGIN
+              ):
     # so, we want to satisfy the demand of every ag field
     benefits = []
     costs = []
@@ -47,8 +58,9 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
         ag_fields = models.AgField.objects.all()
 
     for field in ag_fields:
-        for pipe in field.pipes.all():
-            well = pipe.well
+        # get all the pipes for the field, except get the shortest ones first, and then limit it so we actually only get up to MAX_WELLS_PER_FIELD pipes to reduce model complexity
+        for pipe in field.pipes.all().order_by('distance')[:MAX_WELLS_PER_FIELD]:  # we'll only use the pipes connected to the fields here
+            well = pipe.well  # which means we only get the wells connected to those pipes, not others
 
             do_save = False
             if pipe.variable_name is None or FULL_RESET:
@@ -73,6 +85,17 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
             vars_by_well[well.well_id].append(variable)
             vars_by_field[field.liq_id].append(variable)
 
+        if add_debug:
+            debug_var_name = f"field_{field.liq_id}_debug"
+            debug_var = Variable(name=debug_var_name, nonneg=True)
+
+            costs.append(debug_var * MAX_BENEFIT_DISTANCE_METERS * 1000)  # make this water cost an extra high amount to make sure it doesn't use it unless it's trying to make the model feasible
+
+            # add it to the field's mass balance only so the field can pull water in from here, and that water has no limit,
+            # but it's super high cost
+            vars_by_field[field.liq_id].append(debug_var)
+            vars_by_name[debug_var_name] = debug_var
+
     irrigation_efficiency_params = {}
     for field in vars_by_field:  # for each field, make sure the allocations to it are less than the demand
         #log.info(f"Field: {field}, timestep: {cost_timestep}")
@@ -86,7 +109,7 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
         demand = float(field_demand) / irrigation_efficiency_params[field]
         demands_by_field[field] = demand
         constraints.append(cvxsum(vars_by_field[field]) <= demand)  # make sure it doesn't go very high - should maybe do this with the benefit function and not a constraint
-        constraints.append(cvxsum(vars_by_field[field]) >= FIELD_DEMAND_MARGIN * demand)  # make sure that we get close to the amount of water required. Leaving a bit of slosh to allow for data misalignments
+        constraints.append(cvxsum(vars_by_field[field]) >= field_demand_margin * demand)  # make sure that we get close to the amount of water required. Leaving a bit of slosh to allow for data misalignments
 
     for well in vars_by_well:  # for each well, make sure the allocations it sends out are less than its capacity
         well_obj = models.Well.objects.get(well_id=well)
@@ -96,7 +119,7 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
             annual_production = 0
 
         constraints.append(cvxsum(vars_by_well[well]) <= float(annual_production))  # can't overallocate the well
-        constraints.append(cvxsum(vars_by_well[well]) >= WELL_ALLOCATION_MARGIN * float(annual_production))  # but we also know the well produced a certain amount of water - make sure it's applied
+        constraints.append(cvxsum(vars_by_well[well]) >= well_allocation_margin * float(annual_production))  # but we also know the well produced a certain amount of water - make sure it's applied
 
         # we specified nonneg = True in variable creation so we don't need this. Nonneg = True provides a bit more info to the analyzer
         #for field in vars_by_field:
@@ -105,7 +128,7 @@ def get_parts(cost_timestep=1, year=2018, service_area=None, use_crop_constraint
 
         # now make sure that water from the well that we know went to a specific crop gets allocated to that crop
         if use_crop_constraints:
-            set_crop_constraints(constraints, vars_by_name, well, well_obj)
+            set_crop_constraints(constraints, vars_by_name, well, well_obj, single_crop_well_allocation_margin)
 
     return {"benefits": benefits,
             "costs": costs,
@@ -156,7 +179,7 @@ def report_sa_totals():
     print(f"Total Supply: {all_supplies}, Total Demand: {all_demands}")
 
 
-def set_crop_constraints(constraints, vars_by_name, well, well_obj):
+def set_crop_constraints(constraints, vars_by_name, well, well_obj, single_crop_well_allocation_margin):
     for production in models.WellProduction.objects.filter(well=well_obj):
         crop = production.crop
         if crop is None:
@@ -167,11 +190,11 @@ def set_crop_constraints(constraints, vars_by_name, well, well_obj):
         crop_variables = [vars_by_name[f"well_{well}_field_{pipe.agfield}"] for pipe in pipes_for_well_and_crop]
         # set constraints so that the
         constraints.append(cvxsum(crop_variables) <= float(production.quantity))
-        constraints.append(cvxsum(crop_variables) >= SINGLE_CROP_WELL_ALLOCATION_MARGIN * float(production.quantity))
+        constraints.append(cvxsum(crop_variables) >= single_crop_well_allocation_margin * float(production.quantity))
 
 
-def build_problem(service_area=None, use_crop_constraints=True):
-    problem_info = get_parts(service_area=service_area, use_crop_constraints=use_crop_constraints)
+def build_problem(service_area=None, use_crop_constraints=True, add_debug=False):
+    problem_info = get_parts(service_area=service_area, use_crop_constraints=use_crop_constraints, add_debug=add_debug)
     problem = Problem(Maximize(cvxsum(problem_info["benefits"]) - cvxsum(problem_info["costs"])), problem_info["constraints"])
     return problem, problem_info
 
@@ -237,11 +260,17 @@ class MonteCarloController(object):
     results = list()
     best_result_objective_value = 0
     best_result = None
+    well_allocation_margin = WELL_ALLOCATION_MARGIN
+    single_crop_well_allocation_margin = SINGLE_CROP_WELL_ALLOCATION_MARGIN
+    field_demand_margin = FIELD_DEMAND_MARGIN
 
-    def __init__(self, service_area_id, use_crop_constraints):
+    def __init__(self, service_area_id, use_crop_constraints, debug=False, random_seed='20220330'):
         self.service_area = service_area_id
         self.use_crop_constraints = use_crop_constraints
+        self.debug = debug
         #self.fallow_crop_id = models.Crop.objects.get()
+
+        random.seed(random_seed, version=2)
 
         irrigation_types = models.IrrigationType.objects.all()  # if we don't recognize it, use all of the irrigation type options
         number_of_types = len(irrigation_types)
@@ -256,7 +285,7 @@ class MonteCarloController(object):
         self.build()
 
     def build(self):
-        self.problem, self.problem_info = build_problem(self.service_area, use_crop_constraints=self.use_crop_constraints)
+        self.problem, self.problem_info = build_problem(self.service_area, use_crop_constraints=self.use_crop_constraints, add_debug=self.debug)
 
     def run(self, iterations=None):
         if iterations is None:
@@ -348,6 +377,7 @@ class MonteCarloController(object):
         self.problem.solve()
         #self.update_results(efficiency_information)
 
+        log.info("Solved, processing results")
         results = ServiceAreaResult(self.problem, self.problem_info, efficiency_information)
         if results.objective_value is not False:
             if results.objective_value > self.best_result_objective_value:
@@ -396,6 +426,13 @@ class ServiceAreaResult(object):
 
         self.field_level_results(problem_info, efficiency_information)
 
+    def dump_csvs(self, field_results_path):
+        with open(field_results_path, 'wb') as fh:
+            writer = csv.DictWriter(fh, fieldnames=self.results[0].result_dict.keys())
+            writer.writeheader()
+            for field in self.results:
+                writer.writerow(field.result_dict)
+
     def field_level_results(self, problem_info, efficiency_information):
         for field in problem_info["vars_by_field"]:
             # ignore1, well, ignore2, field = variable.name().split("_")
@@ -427,6 +464,14 @@ class FieldResult(object):
         self.allocations = [float(item.value) for item in allocations if item.value is not None]
         self.net_water_demand = demand - sum(self.allocations)
         self.irrigation_efficiency_value = irrigation_efficiency
+
+    @property
+    def total_allocations(self):
+        return sum(self.allocations)
+
+    @property
+    def result_dict(self):
+        return {'field': self.field, 'allocation': self.total_allocations, 'efficiency': self.irrigation_efficiency_value, 'available_water': self.total_allocations * self.irrigation_efficiency_value, 'excess_demand': self.net_water_demand}
 
 
 """

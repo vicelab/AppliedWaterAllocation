@@ -18,7 +18,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 BOX_PATH = r"C:\Users\dsx\Box"
 INPUT_DATA_PATH = Path(BOX_PATH) / "VICE Lab" / "RESEARCH" / "PROJECTS" / "Valley_Water" / "DATA" / "INPUT DATA"
 CROP_DATA = INPUT_DATA_PATH / "vw_crop_crosswalks_vw_perspective.csv"
-FIELD_DATA = INPUT_DATA_PATH / "vw_fields_liq.csv"
+#FIELD_DATA = INPUT_DATA_PATH / "vw_fields_liq.csv"
+FIELD_DATA = INPUT_DATA_PATH / "vw_fields_southern_subset.csv"
 WELL_DATA = INPUT_DATA_PATH / "vw_wells_with_apns_and_service_areas.csv"
 ET_DATA = INPUT_DATA_PATH / "vw_et_and_precip_2018_annual.csv"
 CROP_IRRIGATION_TYPE_DATA = INPUT_DATA_PATH / "vw_prob_table_crop_irrig.csv"
@@ -28,6 +29,7 @@ PRODUCTION_DATA_FILES = (
                             INPUT_DATA_PATH / "vw_well_billing_monthly.csv",
                          )
 PIPE_FILE = INPUT_DATA_PATH / "vw_well_field_near_table.csv"
+#PIPE_FILE = INPUT_DATA_PATH / "vw_pipes_global_1500m.csv"
 
 
 # Quick-start development settings - unsuitable for production
